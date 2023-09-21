@@ -1,0 +1,9 @@
+./files/
+files/
+/files/
+files/*
+files
+/venv/*
+venv
+venv/
+./venv/
