@@ -36,9 +36,18 @@ def generateImage(elementsList):
         image = Image.new('RGB', (width, height), color='white')
 
         draw = ImageDraw.Draw(image)
-        
+
         for element in elementsList:
-            draw.text((element.x0, element.y0), text=element.value, fill=(0, 0, 0))
+            draw.text(((element.x0), ((-element.y0) + 850), (element.x1), ((-element.y1) + 850)), text=element.value, fill=(0, 0, 0))
+
+        draw.line((42.304, 100, 42.304, 800,), fill=(0, 0, 0), width=1)
+        draw.line((94.085, 100, 94.085, 800,), fill=(0, 0, 0), width=1)
+        draw.line((110.723, 100, 110.723, 800,), fill=(0, 0, 0), width=1)
+        draw.line((399.738, 100, 399.738, 800,), fill=(0, 0, 0), width=1)
+        draw.line((110.227, 100, 110.227, 800,), fill=(0, 0, 0), width=1)
+        draw.line((460.02, 100, 460.02, 800,), fill=(0, 0, 0), width=1)
+        draw.line((526.639, 100, 526.639, 800,), fill=(0, 0, 0), width=1)
+        draw.line((552.341, 100, 552.341, 800,), fill=(0, 0, 0), width=1)
 
         return image
     
@@ -62,6 +71,7 @@ for page in range(qtdPages):
     image = generateImage(elementsList)
     if image:
         image.save(f'{IMAGE_PATH}_pg{page}.png')
+        image.show()
         print(f'Imagem da Pagina {page} foi salva com Sucesso!')
     else:
         print(f'Falha ao tentar salvar a imagem da pagina {page}!')
