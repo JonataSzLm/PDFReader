@@ -1,0 +1,33 @@
+{
+    "banks": {
+        "iti": {
+            "date": {
+                "x0": 42.304,
+                "x1": 94.085,
+                "twoLines": false
+            },
+            "memo": {
+                "x0": 110.723,
+                "x1": 420.585,
+                "twoLines": true
+            },
+            "credit": {
+                "x0": 454.619,
+                "x1": 494.837,
+                "twoLines": true
+            },
+            "debit": {
+                "x0": 526.639,
+                "x1": 552.622,
+                "twoLines": true
+            },
+            "dateFormat": "%d/%m/%Y",
+            "moneyColumns": 2,
+            "moneyFormat": "BRL",
+            "linesInRow": 3,
+            "minColumns": 3,
+            "startTable": "Data",
+            "endTable": "página"
+        }
+    }
+}

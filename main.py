@@ -9,6 +9,13 @@ from operator import attrgetter
 import json
 
 
+class Statement:
+    def __init__(self, date, memo, value):
+        self.date = date
+        self.memo = memo
+        self.value = value
+
+
 class ElementPDF:
     def __init__(self, value, x0, x1, y0, y1, w, h):
         self.value = value
@@ -87,46 +94,60 @@ def loadProfile(bank):
 
 
 def extractTable(profile, elementsList, indexRow):
-    text = ''
     skipNextRow = False
 
+    date = ''
+    memo = ''
+    credit = ''
+    debit = ''
+    value = ''
+    
     currentRow = [currentCol for currentCol in elementsList.get(indexRow, []) if currentCol.value]
     if len(currentRow) >= profile['minColumns']:
-        text += f'\nLinha: {indexRow}\n'
         for col in currentRow:
-            text += f'{col.value}\t'
+            if col.x0 >= profile['date']['x0'] and col.x1 <= profile['date']['x1'] and col.value:
+                date = col.value
+
+            if col.x0 >= profile['memo']['x0'] and col.x1 <= profile['memo']['x1'] and col.value:
+                memo = col.value
+
+            if col.x0 >= profile['credit']['x0'] and col.x1 <= profile['credit']['x1'] and col.value:
+                credit = col.value
+
+            if col.x0 >= profile['debit']['x0'] and col.x1 <= profile['debit']['x1'] and col.value:
+                debit = col.value
         
     else:
-        date = ''
-        memo = ''
-        credit = ''
-        debit = ''
 
         skipNextRow = True
 
         elements = sorted(elementsList, key=lambda x: x)
         for iel, element in enumerate(elements):
             if float(element) == float(indexRow):
+                
+
                 for i in range(profile['linesInRow']):
                     row = (elementsList[elements[iel + i]])
+    
                     for col in row:
-                        if col.x0 >= profile['date']['x0'] and col.x1 <= profile['date']['x1']:
+                        if col.x0 >= profile['date']['x0'] and col.x1 <= profile['date']['x1'] and col.value:
                             date += col.value
 
-                        if col.x0 >= profile['memo']['x0'] and col.x1 <= profile['memo']['x1']:
+                        if col.x0 >= profile['memo']['x0'] and col.x1 <= profile['memo']['x1'] and col.value:
                             memo += col.value
 
-                        if col.x0 >= profile['credit']['x0'] and col.x1 <= profile['credit']['x1']:
+                        if col.x0 >= profile['credit']['x0'] and col.x1 <= profile['credit']['x1'] and col.value:
                             credit += col.value
 
-                        if col.x0 >= profile['debit']['x0'] and col.x1 <= profile['debit']['x1']:
+                        if col.x0 >= profile['debit']['x0'] and col.x1 <= profile['debit']['x1'] and col.value:
                             debit += col.value
 
                 break
 
-        text += f'\nLinha: {indexRow}\n{date}\t{memo}\t{credit if credit else debit}'
+    value = credit if credit else debit
+    statement = Statement(date, memo, value)
 
-    return text, skipNextRow
+    return statement, skipNextRow
 
 
 
@@ -137,37 +158,50 @@ qtdPages = len([element.text for element in pdf.pq('LTPage')])
 # exportXml()
 profile = loadProfile('iti')
 
-with open('saida.txt', 'w', encoding='utf-8') as file:
-    for page in range(qtdPages):
-        pdf.load(page)
+statements = []
 
-        elementsList = [ElementPDF(str(element.text), float(element.get('x0', '')), float(element.get('x1', '')), ((-float(element.get('y0', ''))) + HEIGHT), ((-float(element.get('y1', ''))) + HEIGHT), float(element.get('width', '')), float(element.get('height', ''))) for element in pdf.pq('LTTextLineHorizontal')]
-        elementsList.extend([ElementPDF(str(element.text), float(element.get('x0', '')), float(element.get('x1', '')), ((-float(element.get('y0', ''))) + HEIGHT), ((-float(element.get('y1', ''))) + HEIGHT), float(element.get('width', '')), float(element.get('height', ''))) for element in pdf.pq('LTTextBoxHorizontal')])
+try:
+    with open('saida.csv', 'w', encoding='utf-8') as file:
+        file.write('Data;Descrição;Valor\n')
+        for page in range(qtdPages):
+            pdf.load(page)
 
-        startTableText = profile['startTable']
-        endTableText = profile['endTable']
+            elementsList = [ElementPDF(str(element.text), float(element.get('x0', '')), float(element.get('x1', '')), ((-float(element.get('y0', ''))) + HEIGHT), ((-float(element.get('y1', ''))) + HEIGHT), float(element.get('width', '')), float(element.get('height', ''))) for element in pdf.pq('LTTextLineHorizontal')]
+            elementsList.extend([ElementPDF(str(element.text), float(element.get('x0', '')), float(element.get('x1', '')), ((-float(element.get('y0', ''))) + HEIGHT), ((-float(element.get('y1', ''))) + HEIGHT), float(element.get('width', '')), float(element.get('height', ''))) for element in pdf.pq('LTTextBoxHorizontal')])
 
-        startTable = [(-float(el.get('y1', ''))) + HEIGHT for el in pdf.pq(f'LTTextLineHorizontal:contains("{startTableText}")')]
-        endTable = [(-float(el.get('y1', ''))) + HEIGHT for el in pdf.pq(f'LTTextLineHorizontal:contains("{endTableText}")')]
+            startTableText = profile['startTable']
+            endTableText = profile['endTable']
 
-        newElementsList = groupByY1(elementsList)
-    
+            startTable = [(-float(el.get('y1', ''))) + HEIGHT for el in pdf.pq(f'LTTextLineHorizontal:contains("{startTableText}")')]
+            endTable = [(-float(el.get('y1', ''))) + HEIGHT for el in pdf.pq(f'LTTextLineHorizontal:contains("{endTableText}")')]
 
-        skipLastRow = False
-        skipIndex = 0
-        for indexYRow, yRow in enumerate(newElementsList):
-            if float(yRow) > startTable[0] and float(yRow) < endTable[0]:
-                
-                if not skipLastRow:
-                    text, skipLastRow = extractTable(profile, newElementsList, yRow)
-                    file.write(text)
+            newElementsList = groupByY1(elementsList)
+        
 
-                if skipLastRow:
-                    skipIndex += 1
-
-                if skipIndex >= profile['linesInRow']:
-                    skipLastRow = False
+            skipLastRow = False
+            skipIndex = 0
+            for indexYRow, yRow in enumerate(newElementsList):
+                if float(yRow) > startTable[0] and float(yRow) < endTable[0]:
                     
+                    if not skipLastRow:
+                        statement, skipLastRow = extractTable(profile, newElementsList, yRow)
+                        statements.append(statement)
+                        
+                        file.write(f'{statement.date};{statement.memo};{statement.value}\n')
+
+
+                    if skipLastRow:
+                        skipIndex += 1
+
+                    if skipIndex >= profile['linesInRow']:
+                        skipLastRow = False
+                        skipIndex = 0
+                    
+
+
+except Exception as e:
+    print(e)
+
                 # row = newElementsList.get(yRow, [])
                 # file.write(f'\nLinha: {yRow}\n')
                 # for col in row:
