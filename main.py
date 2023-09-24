@@ -1,6 +1,13 @@
+# -*- coding: utf-8 -*-
+
 from pdfquery import PDFQuery
 from lxml import etree
 from PIL import Image, ImageDraw, ImageFont
+
+from itertools import groupby
+from operator import attrgetter
+import json
+
 
 class ElementPDF:
     def __init__(self, value, x0, x1, y0, y1, w, h):
@@ -16,6 +23,8 @@ class ElementPDF:
 PDF_PATH = './files/Extrato.pdf'
 IMAGE_PATH = './files/Extrato'
 XML_PATH = './files/Extrato.xml'
+PROFILES_PATH = './files/profiles.json'
+HEIGHT = 850
 
 
 def exportXml():
@@ -29,25 +38,27 @@ def exportXml():
         return False
 
 
-def generateImage(elementsList):
+def generateImage(elementsList, textEnable=True, lineEnable=False, rectangleEnable=False):
     try:
-        width, height = 600, 850
+        width, height = 600, HEIGHT
 
         image = Image.new('RGB', (width, height), color='white')
 
         draw = ImageDraw.Draw(image)
 
         for element in elementsList:
-            draw.text(((element.x0), ((-element.y0) + 850), (element.x1), ((-element.y1) + 850)), text=element.value, fill=(0, 0, 0))
+            
+            if textEnable:
+                draw.text((element.x0, element.y1), text=element.value, fill=(0, 0, 0))
 
-        draw.line((42.304, 100, 42.304, 800,), fill=(0, 0, 0), width=1)
-        draw.line((94.085, 100, 94.085, 800,), fill=(0, 0, 0), width=1)
-        draw.line((110.723, 100, 110.723, 800,), fill=(0, 0, 0), width=1)
-        draw.line((399.738, 100, 399.738, 800,), fill=(0, 0, 0), width=1)
-        draw.line((110.227, 100, 110.227, 800,), fill=(0, 0, 0), width=1)
-        draw.line((460.02, 100, 460.02, 800,), fill=(0, 0, 0), width=1)
-        draw.line((526.639, 100, 526.639, 800,), fill=(0, 0, 0), width=1)
-        draw.line((552.341, 100, 552.341, 800,), fill=(0, 0, 0), width=1)
+            if lineEnable:
+                draw.line((element.x0, element.y1, element.x0, element.y0,), fill=(0, 255, 0), width=1)
+                draw.line((element.x1, element.y1, element.x1, element.y0,), fill=(255, 0, 0), width=1)
+
+            if rectangleEnable:
+                draw.rectangle([(element.x0, element.y1), (element.x1, element.y0)], outline=(255, 0, 0), width=1)
+        
+
 
         return image
     
@@ -55,24 +66,119 @@ def generateImage(elementsList):
         print(e)
         return None
 
-# exportXml()
+
+
+def groupByY1(elementsList):
+    elementsList.sort(key=attrgetter('y1'))
+    lines = {key: list(group) for key, group in groupby(elementsList, key=attrgetter('y1'))}
+    return lines
+
+
+def loadProfile(bank):
+    try:
+        with open(PROFILES_PATH, 'r', encoding='utf-8') as file:
+            profiles = json.loads(file.read())
+
+        return profiles['banks'][bank]
+
+    except Exception as e:
+        print(e)
+        return None
+
+
+def extractTable(profile, elementsList, indexRow):
+    text = ''
+    skipNextRow = False
+
+    currentRow = [currentCol for currentCol in elementsList.get(indexRow, []) if currentCol.value]
+    if len(currentRow) >= profile['minColumns']:
+        text += f'\nLinha: {indexRow}\n'
+        for col in currentRow:
+            text += f'{col.value}\t'
+        
+    else:
+        date = ''
+        memo = ''
+        credit = ''
+        debit = ''
+
+        skipNextRow = True
+
+        elements = sorted(elementsList, key=lambda x: x)
+        for iel, element in enumerate(elements):
+            if float(element) == float(indexRow):
+                for i in range(profile['linesInRow']):
+                    row = (elementsList[elements[iel + i]])
+                    for col in row:
+                        if col.x0 >= profile['date']['x0'] and col.x1 <= profile['date']['x1']:
+                            date += col.value
+
+                        if col.x0 >= profile['memo']['x0'] and col.x1 <= profile['memo']['x1']:
+                            memo += col.value
+
+                        if col.x0 >= profile['credit']['x0'] and col.x1 <= profile['credit']['x1']:
+                            credit += col.value
+
+                        if col.x0 >= profile['debit']['x0'] and col.x1 <= profile['debit']['x1']:
+                            debit += col.value
+
+                break
+
+        text += f'\nLinha: {indexRow}\n{date}\t{memo}\t{credit if credit else debit}'
+
+    return text, skipNextRow
+
+
 
 pdf = PDFQuery(PDF_PATH, laparams={'all_texts': True})
 pdf.load()
 qtdPages = len([element.text for element in pdf.pq('LTPage')])
 
+# exportXml()
+profile = loadProfile('iti')
 
-for page in range(qtdPages):
-    pdf.load(page)
+with open('saida.txt', 'w', encoding='utf-8') as file:
+    for page in range(qtdPages):
+        pdf.load(page)
 
-    elementsList = [ElementPDF(str(element.text).encode('ascii', 'ignore'), float(element.get('x0', '')), float(element.get('x1', '')), float(element.get('y0', '')), float(element.get('y1', '')), float(element.get('width', '')), float(element.get('height', ''))) for element in pdf.pq('LTTextLineHorizontal')]
-    elementsList.extend([ElementPDF(str(element.text).encode('ascii', 'ignore'), float(element.get('x0', '')), float(element.get('x1', '')), float(element.get('y0', '')), float(element.get('y1', '')), float(element.get('width', '')), float(element.get('height', ''))) for element in pdf.pq('LTTextBoxHorizontal')])
+        elementsList = [ElementPDF(str(element.text), float(element.get('x0', '')), float(element.get('x1', '')), ((-float(element.get('y0', ''))) + HEIGHT), ((-float(element.get('y1', ''))) + HEIGHT), float(element.get('width', '')), float(element.get('height', ''))) for element in pdf.pq('LTTextLineHorizontal')]
+        elementsList.extend([ElementPDF(str(element.text), float(element.get('x0', '')), float(element.get('x1', '')), ((-float(element.get('y0', ''))) + HEIGHT), ((-float(element.get('y1', ''))) + HEIGHT), float(element.get('width', '')), float(element.get('height', ''))) for element in pdf.pq('LTTextBoxHorizontal')])
 
-    image = generateImage(elementsList)
-    if image:
-        image.save(f'{IMAGE_PATH}_pg{page}.png')
-        image.show()
-        print(f'Imagem da Pagina {page} foi salva com Sucesso!')
-    else:
-        print(f'Falha ao tentar salvar a imagem da pagina {page}!')
+        startTableText = profile['startTable']
+        endTableText = profile['endTable']
+
+        startTable = [(-float(el.get('y1', ''))) + HEIGHT for el in pdf.pq(f'LTTextLineHorizontal:contains("{startTableText}")')]
+        endTable = [(-float(el.get('y1', ''))) + HEIGHT for el in pdf.pq(f'LTTextLineHorizontal:contains("{endTableText}")')]
+
+        newElementsList = groupByY1(elementsList)
+    
+
+        skipLastRow = False
+        skipIndex = 0
+        for indexYRow, yRow in enumerate(newElementsList):
+            if float(yRow) > startTable[0] and float(yRow) < endTable[0]:
+                
+                if not skipLastRow:
+                    text, skipLastRow = extractTable(profile, newElementsList, yRow)
+                    file.write(text)
+
+                if skipLastRow:
+                    skipIndex += 1
+
+                if skipIndex >= profile['linesInRow']:
+                    skipLastRow = False
+                    
+                # row = newElementsList.get(yRow, [])
+                # file.write(f'\nLinha: {yRow}\n')
+                # for col in row:
+                #     if col.value:
+                #         file.write(f'{col.value}\t')
+
+    # image = generateImage(elementsList, rectangleEnable=True)
+    # if image:
+    #     # image.save(f'{IMAGE_PATH}_pg{page}.png')
+    #     image.show()
+    #     print(f'Imagem da Pagina {page} foi salva com Sucesso!')
+    # else:
+    #     print(f'Falha ao tentar salvar a imagem da pagina {page}!')
 
